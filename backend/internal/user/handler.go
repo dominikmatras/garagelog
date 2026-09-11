@@ -4,7 +4,9 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/dominikmatras/garagelog/internal/auth"
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
@@ -56,4 +58,60 @@ func (h *Handler) Register(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, newUser)
+}
+
+func (h *Handler) Login(c *gin.Context) {
+	var req LoginRequest
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "invalid request body",
+		})
+		return
+	}
+
+	var user User
+
+	query := `SELECT id, first_name, last_name, email, password_hash, role FROM users WHERE email = $1`
+
+	err := h.DB.QueryRow(c.Request.Context(), query, req.Email).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.PasswordHash, &user.Role)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusUnauthorized, gin.H{
+				"error": "invalid email or password",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to login",
+		})
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(req.Password))
+
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "invalid email or password",
+		})
+		return
+	}
+
+	token, err := auth.GenerateToken(user.ID, user.Role)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to generate token",
+		})
+		return
+	}
+
+	response := LoginResponse{
+		Token: token,
+		User:  user,
+	}
+
+c.JSON(http.StatusOK, response)
+
 }

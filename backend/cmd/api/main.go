@@ -35,6 +35,7 @@ func main() {
 	})
 
 	router.POST("/auth/register", userHandler.Register)
+	router.POST("/auth/login", userHandler.Login)
 
 	router.GET("/vehicles", vehicleHandler.GetVehicles)
 	router.GET("/vehicles/:id", vehicleHandler.GetVehicleByID)
