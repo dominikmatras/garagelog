@@ -112,6 +112,78 @@ func (h *Handler) Login(c *gin.Context) {
 		User:  user,
 	}
 
-c.JSON(http.StatusOK, response)
+	c.JSON(http.StatusOK, response)
 
+}
+
+func (h *Handler) GetUsers(c *gin.Context) {
+	query := `SELECT id, first_name, last_name, email, role FROM users ORDER BY created_at`
+
+	rows, err := h.DB.Query(c.Request.Context(), query)
+	
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to get users",
+		})
+		return
+	}
+
+	defer rows.Close()
+
+	users := make([]User, 0)
+
+	for rows.Next() {
+		var user User
+
+		err := rows.Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Role)
+
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "failed to read user data",
+			})
+			return
+		}
+
+		users = append(users, user)
+	}
+
+	if err := rows.Err(); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to read user data",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, users)
+}
+
+func (h *Handler) GetMe(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "user not authenticated, user id not found",
+		})
+		return
+	}
+
+	var user User 
+
+	query := `SELECT id, first_name, last_name, email, role FROM users WHERE id = $1`
+
+	err := h.DB.QueryRow(c.Request.Context(), query, userID).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Role)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "user not found",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "failed to get user",
+		})
+		return
+	}
+	c.JSON(http.StatusOK, user)
 }
